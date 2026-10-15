@@ -583,7 +583,11 @@
   try{ if(localStorage.getItem(TAB_KEY) === 'settings') tab = 'settings'; }catch(e){}
   if(location.hash === '#settings') tab = 'settings';
 
-  function show(t){
+  function show(t, fromHistory){
+    // Each tab change is a history entry, so the phone's back button returns to the previous tab.
+    if(!fromHistory && t !== tab){
+      try{ history.pushState({ tab:t }, '', t === 'settings' ? '#settings' : location.pathname + location.search); }catch(e){}
+    }
     tab = t;
     try{ localStorage.setItem(TAB_KEY, t); }catch(e){}
     document.getElementById('tabHome').setAttribute('aria-selected', t === 'home');
@@ -802,7 +806,17 @@
 
   var d = new Date();
   document.getElementById('today').textContent = d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
-  show(tab);
+  // Start history at Home so back from Settings goes to Home before leaving the app.
+  try{
+    history.replaceState({ tab:'home' }, '', location.pathname + location.search);
+    if(tab === 'settings') history.pushState({ tab:'settings' }, '', '#settings');
+  }catch(e){}
+  window.addEventListener('popstate', function(e){
+    var t = (e.state && e.state.tab) || (location.hash === '#settings' ? 'settings' : 'home');
+    if(t !== tab) show(t, true);
+  });
+  var startTab = tab; tab = null;
+  show(startTab, true);
 })();
 </script>
 
