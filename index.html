@@ -536,11 +536,14 @@
     html += '<button class="btn block" type="button" data-act="add-card">+ 카드 추가</button>';
     html += '<div class="section-title">백업</div>' +
       '<div class="backup">' +
-        '<span class="hint">데이터는 이 기기의 이 브라우저에만 저장돼요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 코드를 복사해 메모장 등에 보관하세요.</span>' +
-        '<div class="row"><label class="btn primary" for="backupFile">백업 파일 불러오기</label>' +
-        '<input type="file" id="backupFile" accept="application/json,.json,.txt" hidden>' +
-        '<button class="btn" type="button" data-act="show-import">코드 붙여넣기</button>' +
+        '<span class="hint">데이터는 이 휴대폰에만 저장돼요. 휴대폰을 바꾸거나 브라우저 데이터를 지우기 전에 백업 파일을 저장해 두세요.</span>' +
+        '<span class="lbl" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">저장하기</span>' +
+        '<div class="row"><button class="btn primary" type="button" data-act="save-file">백업 파일 저장</button>' +
         '<button class="btn" type="button" data-act="copy">백업 코드 복사</button></div>' +
+        '<span class="lbl" style="font-size:12.5px;font-weight:600;color:var(--ink-2)">불러오기</span>' +
+        '<div class="row"><label class="btn" for="backupFile">백업 파일 불러오기</label>' +
+        '<input type="file" id="backupFile" accept="application/json,.json,.txt" hidden>' +
+        '<button class="btn" type="button" data-act="show-import">코드 붙여넣기</button></div>' +
         '<div id="backupArea" hidden></div>' +
       '</div>';
     view.innerHTML = '<div style="display:flex;flex-direction:column;gap:12px">' + html + '</div>';
@@ -692,6 +695,7 @@
       return;
     }
     if(act === 'copy'){ copyBackup(); return; }
+    if(act === 'save-file'){ saveBackupFile(); return; }
     if(act === 'show-import'){ showImport(); return; }
     if(act === 'do-import'){ previewImport(document.getElementById('backupIn').value); return; }
     if(act === 'confirm-import'){ applyImport(); return; }
@@ -724,6 +728,23 @@
   });
 
   // ---------------- Backup ----------------
+  function saveBackupFile(){
+    var d = new Date();
+    var ymd = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    var name = 'mycards-backup-' + ymd + '.json'; // ASCII: some Chrome builds drop non-ASCII download names
+    try{
+      var blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      toast(name + ' 파일을 저장했어요. 다운로드 폴더에서 확인하세요');
+    }catch(e){
+      toast('파일로 저장하지 못했어요. 백업 코드 복사를 이용해 주세요');
+    }
+  }
+
   function copyBackup(){
     var text = JSON.stringify(state);
     var area = document.getElementById('backupArea');
