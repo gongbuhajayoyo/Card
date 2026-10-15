@@ -1,5 +1,5 @@
 // Offline support: network first so updates show up right away, cache as fallback.
-const CACHE = 'card-dashboard-v4';
+const CACHE = 'card-dashboard-v5';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

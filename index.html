@@ -139,7 +139,7 @@
 
   .usage-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .money{
-    display:flex; align-items:center; gap:6px; flex:1 1 170px; min-width:0;
+    display:flex; align-items:center; gap:6px; flex:1 1 100%; min-width:0;
     background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:0 12px;
   }
   .money:focus-within{ border-color:var(--accent); }
@@ -149,7 +149,7 @@
     font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; outline:none;
   }
   .money .won{ font-size:14px; color:var(--ink-2); }
-  .fixnote{ font-size:12px; color:var(--muted); }
+  .fixnote{ font-size:12px; color:var(--muted); margin-top:1px; }
 
   .home-foot{ display:flex; justify-content:center; padding-top:4px; }
   .textbtn{ background:none; border:0; padding:8px 6px; color:var(--muted); font-size:13px; text-decoration:underline; text-underline-offset:3px; }
@@ -403,8 +403,9 @@
     }
     return {
       pill:'<span class="pill ' + st + '">' + pillText + '</span>',
-      main:'<div class="remain">' + amt + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>' + meter,
-      fix: r.futureFixed > 0 ? '남은 고정지출 ' + fmt(r.futureFixed) + '원 포함' : ''
+      main:'<div class="remain">' + amt + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') +
+        (st !== 'unset' && r.futureFixed > 0 ? '<div class="fixnote">이번 달 남은 고정지출 ' + fmt(r.futureFixed) + '원 반영</div>' : '') +
+        '</div>' + meter
     };
   }
 
@@ -440,7 +441,6 @@
           '<div class="money"><label for="u-' + card.id + '">사용금액</label>' +
           '<input id="u-' + card.id + '" data-usage="' + card.id + '" type="text" inputmode="numeric" autocomplete="off" value="' + fmt(card.usage) + '">' +
           '<span class="won">원</span></div>' +
-          '<span class="fixnote" data-slot="fix">' + b.fix + '</span>' +
         '</div>' +
       '</article>';
     });
@@ -455,7 +455,6 @@
     var b = tileBody(card);
     tile.querySelector('[data-slot="pill"]').innerHTML = b.pill;
     tile.querySelector('[data-slot="main"]').innerHTML = b.main;
-    tile.querySelector('[data-slot="fix"]').textContent = b.fix;
     document.getElementById('hero').innerHTML = heroHtml();
   }
 
