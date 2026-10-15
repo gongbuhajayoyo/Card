@@ -1,6 +1,6 @@
 {
-  "name": "카드 실적 대시보드",
-  "short_name": "카드 대시보드",
+  "name": "내 카드 관리",
+  "short_name": "내 카드 관리",
   "description": "카드별로 이번 달 실적 목표까지 더 쓸 수 있는 금액",
   "lang": "ko",
   "start_url": "./",
