@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>카드 실적 대시보드</title>
+<meta name="theme-color" content="#0e0f17" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f2f7" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="카드 대시보드">
+<style>
+  /* Standalone app shell: keep content clear of the status bar / gesture bar. */
+  :root{ padding-top:env(safe-area-inset-top, 0px); padding-bottom:env(safe-area-inset-bottom, 0px); }
+  body{ margin:0; }
+  img{ max-width:100%; }
+</style>
+
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+  }
+</script>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: one narrow column like a wallet app; Home = hero total + one tile per card, Settings = editable card panels; fixed bottom tab bar. */
+  :root{
+    --bg:#f1f2f7; --surface:#ffffff; --surface-2:#f6f6fb; --line:#e2e3ee;
+    --ink:#15172b; --ink-2:#4a4d66; --muted:#7c7f98;
+    --accent:#3a2d9c; --accent-ink:#ffffff;
+    --hero:#2f2489; --hero-2:#4a3cc0; --hero-ink:#ffffff; --hero-dim:rgba(255,255,255,.72);
+    --ok:#1d7a66; --over:#c2412d; --toast-act:#b9b0ff;
+    --font:'IBM Plex Sans KR', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    --mono:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --r:16px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0e0f17; --surface:#171925; --surface-2:#1e2030; --line:#2a2d40;
+      --ink:#eceef8; --ink-2:#b9bcd2; --muted:#8a8da8;
+      --accent:#a59bff; --accent-ink:#141230;
+      --hero:#2a2276; --hero-2:#3d32a6; --hero-ink:#ffffff; --hero-dim:rgba(255,255,255,.7);
+      --ok:#55c3a8; --over:#ff8c72; --toast-act:#3a2d9c;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e0f17; --surface:#171925; --surface-2:#1e2030; --line:#2a2d40;
+    --ink:#eceef8; --ink-2:#b9bcd2; --muted:#8a8da8;
+    --accent:#a59bff; --accent-ink:#141230;
+    --hero:#2a2276; --hero-2:#3d32a6; --hero-ink:#ffffff; --hero-dim:rgba(255,255,255,.7);
+    --ok:#55c3a8; --over:#ff8c72; --toast-act:#3a2d9c;
+    color-scheme:dark;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased; overscroll-behavior-y:none;
+  }
+  .num{ font-variant-numeric:tabular-nums; }
+  button, input, textarea{ font-family:inherit; font-size:inherit; color:inherit; }
+  button{ cursor:pointer; }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  .app{
+    max-width:520px; margin:0 auto;
+    padding-left:max(16px, env(safe-area-inset-left, 0px));
+    padding-right:max(16px, env(safe-area-inset-right, 0px));
+    padding-block:20px calc(96px + env(safe-area-inset-bottom, 0px));
+    display:flex; flex-direction:column; gap:14px;
+  }
+  #view{ display:flex; flex-direction:column; gap:14px; }
+  [hidden]{ display:none !important; }
+  .topbar{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:4px 2px 2px; }
+  .topbar h1{ margin:0; font-size:22px; font-weight:700; letter-spacing:-0.02em; text-wrap:balance; }
+  .topbar .date{ font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.02em; white-space:nowrap; }
+
+  /* ---------- Home ---------- */
+  .hero{
+    position:relative; overflow:hidden; border-radius:20px; padding:22px 22px 18px;
+    background:linear-gradient(135deg, var(--hero) 0%, var(--hero-2) 100%); color:var(--hero-ink);
+  }
+  .hero::after{ /* faint card-stripe sheen */
+    content:""; position:absolute; right:-40px; top:-60px; width:220px; height:220px; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,255,255,.14), rgba(255,255,255,0) 70%); pointer-events:none;
+  }
+  .hero .eyebrow{ font-size:13px; color:var(--hero-dim); }
+  .hero .total{ font-size:36px; font-weight:700; letter-spacing:-0.02em; line-height:1.15; margin:4px 0 16px; }
+  .hero .total small{ font-size:20px; font-weight:600; margin-left:2px; }
+  .hero .stats{ display:flex; gap:22px; flex-wrap:wrap; font-size:12.5px; color:var(--hero-dim); }
+  .hero .stats b{ display:block; font-size:15px; font-weight:600; color:var(--hero-ink); }
+
+  .banner{
+    background:var(--surface); border:1px solid var(--accent); border-radius:var(--r);
+    padding:14px 16px; display:flex; flex-direction:column; gap:10px; font-size:14px;
+  }
+  .banner .row{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .tiles{ display:flex; flex-direction:column; gap:12px; }
+  .tile{ background:var(--surface); border-radius:var(--r); padding:16px 16px 14px; display:flex; flex-direction:column; gap:12px; }
+  .tile-head{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .tile-name{ font-weight:600; font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .chipcard{ width:34px; height:22px; border-radius:4px; flex:none; position:relative; background:var(--c, #3a2d9c); }
+  .chipcard::before{ content:""; position:absolute; left:5px; top:6px; width:8px; height:7px; border-radius:1.5px; background:rgba(255,236,170,.85); }
+  .chipcard::after{ content:""; position:absolute; left:0; right:0; bottom:5px; height:2px; background:rgba(255,255,255,.22); }
+
+  .pill{ font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; flex:none; }
+  .pill.left{ color:var(--accent); background:color-mix(in srgb, var(--accent) 13%, transparent); }
+  .pill.done{ color:var(--ok); background:color-mix(in srgb, var(--ok) 14%, transparent); }
+  .pill.over{ color:var(--over); background:color-mix(in srgb, var(--over) 14%, transparent); }
+  .pill.unset{ color:var(--muted); background:var(--surface-2); }
+
+  .remain{ display:flex; flex-direction:column; gap:1px; }
+  .remain .amt{ font-size:26px; font-weight:700; letter-spacing:-0.02em; line-height:1.2; }
+  .remain .amt.over{ color:var(--over); }
+  .remain .amt.done{ color:var(--ok); }
+  .remain .amt.unset{ font-size:16px; font-weight:500; color:var(--muted); }
+  .remain .sub{ font-size:12.5px; color:var(--ink-2); }
+
+  .meter{ position:relative; padding-bottom:18px; }
+  .track{ position:relative; height:10px; border-radius:6px; background:var(--surface-2); overflow:hidden; box-shadow:inset 0 0 0 1px var(--line); }
+  .seg{ position:absolute; top:0; bottom:0; left:0; }
+  .seg.use{ background:var(--c, var(--accent)); }
+  .seg.fix{ background:var(--c, var(--accent)); opacity:.38; }
+  .seg.ex{ background:repeating-linear-gradient(135deg, var(--over) 0 3px, transparent 3px 6px); }
+  .tick{ position:absolute; top:-2px; height:14px; width:2px; margin-left:-1px; background:var(--surface); }
+  .tlabel{ position:absolute; top:14px; transform:translateX(-50%); font-family:var(--mono); font-size:10px; color:var(--muted); white-space:nowrap; }
+  .tlabel.end{ transform:translateX(-100%); }
+  .tlabel.goal{ color:var(--ink); }
+
+  .usage-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .money{
+    display:flex; align-items:center; gap:6px; flex:1 1 170px; min-width:0;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:0 12px;
+  }
+  .money:focus-within{ border-color:var(--accent); }
+  .money label{ font-size:12px; color:var(--muted); white-space:nowrap; }
+  .money input{
+    flex:1; min-width:0; border:0; background:transparent; padding:11px 0; text-align:right;
+    font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; outline:none;
+  }
+  .money .won{ font-size:14px; color:var(--ink-2); }
+  .fixnote{ font-size:12px; color:var(--muted); }
+
+  .home-foot{ display:flex; justify-content:center; padding-top:4px; }
+  .textbtn{ background:none; border:0; padding:8px 6px; color:var(--muted); font-size:13px; text-decoration:underline; text-underline-offset:3px; }
+  .textbtn:hover{ color:var(--ink); }
+  .textbtn.danger{ color:var(--over); }
+
+  .empty{ background:var(--surface); border-radius:var(--r); padding:28px 18px; text-align:center; color:var(--ink-2); font-size:14px; display:flex; flex-direction:column; gap:12px; align-items:center; }
+
+  /* ---------- Buttons ---------- */
+  .btn{ border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:10px; padding:9px 14px; font-size:13.5px; font-weight:500; }
+  .btn:hover{ border-color:var(--ink-2); }
+  .btn.primary{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .btn.danger{ color:var(--over); border-color:color-mix(in srgb, var(--over) 45%, transparent); }
+  .btn.danger.armed{ background:var(--over); color:var(--bg); border-color:var(--over); }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .btn.block{ width:100%; padding:13px; border-style:dashed; color:var(--ink-2); background:transparent; }
+
+  /* ---------- Settings ---------- */
+  .section-title{ font-size:12px; font-weight:600; color:var(--muted); letter-spacing:.06em; padding:6px 2px 0; }
+  .panel{ background:var(--surface); border-radius:var(--r); overflow:hidden; }
+  .panel-head{ width:100%; display:flex; align-items:center; gap:12px; padding:14px 16px; background:none; border:0; text-align:left; }
+  .panel-head .meta{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .panel-head .nm{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .panel-head .ds{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .panel-head .chev{ color:var(--muted); font-size:12px; transition:transform .2s; }
+  .panel.open .panel-head .chev{ transform:rotate(180deg); }
+  .panel-body{ border-top:1px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:18px; }
+
+  .group{ display:flex; flex-direction:column; gap:8px; }
+  .group > .lbl{ font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .hint{ font-size:12px; color:var(--muted); }
+  .text{
+    width:100%; border:1px solid var(--line); background:var(--surface-2); border-radius:10px; padding:10px 12px; outline:none;
+  }
+  .text:focus{ border-color:var(--accent); }
+  textarea.text{ min-height:84px; resize:vertical; line-height:1.55; font-size:14px; }
+
+  .swatches{ display:flex; gap:10px; flex-wrap:wrap; }
+  .swatch{ width:34px; height:22px; border-radius:4px; border:0; padding:0; background:var(--c); box-shadow:0 0 0 1px var(--line); }
+  .swatch[aria-pressed="true"]{ box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+
+  .tiers{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+  .tier{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .tier span{ font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .tier input{ text-align:right; font-variant-numeric:tabular-nums; padding:10px; }
+
+  .seg-ctrl{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:3px; gap:3px; }
+  .seg-ctrl button{ border:0; background:transparent; border-radius:7px; padding:8px 4px; font-size:13px; color:var(--ink-2); }
+  .seg-ctrl button[aria-pressed="true"]{ background:var(--surface); color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
+  .seg-ctrl button:disabled{ opacity:.35; cursor:not-allowed; }
+
+  .fx-list{ display:flex; flex-direction:column; gap:8px; }
+  .fx{ display:grid; grid-template-columns:minmax(0,1fr) 54px 108px 28px; gap:6px; align-items:center; }
+  .fx input{ padding:9px 10px; font-size:14px; }
+  .fx .d, .fx .a{ text-align:right; font-variant-numeric:tabular-nums; }
+  .fx .rm{ border:0; background:none; color:var(--muted); font-size:18px; line-height:1; padding:4px; }
+  .fx .rm:hover{ color:var(--over); }
+  .fx-head{ display:grid; grid-template-columns:minmax(0,1fr) 54px 108px 28px; gap:6px; font-size:11px; color:var(--muted); }
+  .fx-head span:nth-child(2), .fx-head span:nth-child(3){ text-align:right; padding-right:10px; }
+
+  .panel-actions{ display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid var(--line); padding-top:14px; }
+  .panel-actions .spacer{ flex:1; }
+
+  .backup{ background:var(--surface); border-radius:var(--r); padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .backup .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .backup textarea{ font-family:var(--mono); font-size:11.5px; min-height:110px; }
+
+  /* ---------- Tab bar & toast ---------- */
+  .tabbar{
+    position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);
+    padding:8px max(16px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  }
+  .tabbar-in{ max-width:520px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tab{ border:0; background:none; border-radius:12px; padding:9px 0 7px; display:flex; flex-direction:column; align-items:center; gap:2px; color:var(--muted); font-size:12px; font-weight:500; }
+  .tab svg{ width:22px; height:22px; }
+  .tab[aria-selected="true"]{ color:var(--accent); font-weight:600; }
+
+  .toast{
+    position:fixed; left:50%; transform:translateX(-50%); z-index:60;
+    bottom:calc(84px + env(safe-area-inset-bottom, 0px));
+    background:var(--ink); color:var(--bg); border-radius:12px; padding:10px 14px; font-size:13.5px;
+    display:flex; gap:14px; align-items:center; max-width:calc(100% - 32px); box-shadow:0 6px 20px rgba(0,0,0,.2);
+  }
+  .toast button{ background:none; border:0; color:var(--toast-act); font-weight:700; padding:0; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+  @media (max-width:380px){
+    .fx, .fx-head{ grid-template-columns:minmax(0,1fr) 46px 92px 24px; }
+    .hero .total{ font-size:32px; }
+  }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <h1 id="pageTitle">카드 실적</h1>
+    <span class="date" id="today"></span>
+  </header>
+  <main id="view"></main>
+</div>
+
+<nav class="tabbar" aria-label="화면 전환">
+  <div class="tabbar-in" role="tablist">
+    <button class="tab" role="tab" id="tabHome" data-tab="home" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="none"/><path d="M2.5 9.5h19" fill="none"/><path d="M6 15h4" fill="none"/></svg>
+      홈
+    </button>
+    <button class="tab" role="tab" id="tabSettings" data-tab="settings" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8" fill="none"/><circle cx="16" cy="7" r="2" fill="none"/><circle cx="10" cy="17" r="2" fill="none"/></svg>
+      설정
+    </button>
+  </div>
+</nav>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  var STORAGE_KEY = 'card_dashboard_state_v2';
+  var TAB_KEY = 'card_dashboard_tab';
+  var COLORS = ['#3a2d9c', '#1f6f6a', '#2f3a4f', '#8c2f4a', '#a0782a', '#2a6fb0'];
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  function curMonth(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+  function fmt(n){ return Math.round(n || 0).toLocaleString('ko-KR'); }
+  function short(n){ // 300000 -> 30만, 1250000 -> 125만, 155000 -> 15.5만
+    if(n >= 10000){ var m = n / 10000; return (Math.round(m * 10) / 10).toLocaleString('ko-KR') + '만'; }
+    return fmt(n);
+  }
+  function parseNum(v){ var n = parseInt(String(v).replace(/[^0-9]/g,''), 10); return isNaN(n) ? 0 : n; }
+  function parseTier(v){ var n = parseNum(v); return n > 0 ? n : null; }
+  function parseDay(v){
+    var n = parseInt(String(v).replace(/[^0-9]/g,''), 10);
+    if(isNaN(n)) return null;
+    return Math.min(Math.max(n, 1), 31);
+  }
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function newCard(name, i){
+    return { id: uid(), name: name, color: COLORS[i % COLORS.length], tier1: 300000, tier2: null, tier3: null, targetTier: null, usage: 0, memo: '', fixed: [] };
+  }
+  function migrate(s){
+    s.cards.forEach(function(c, i){
+      if(c.tier1 === undefined){ c.tier1 = c.target || null; c.tier2 = null; c.tier3 = null; delete c.target; }
+      if(c.memo === undefined) c.memo = '';
+      if(c.targetTier === undefined) c.targetTier = null;
+      if(!c.color) c.color = COLORS[i % COLORS.length];
+      c.fixed = c.fixed || [];
+      c.fixed.forEach(function(f){ if(f.date === undefined) f.date = null; });
+    });
+    return s;
+  }
+  function loadState(){
+    try{
+      var p = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if(p && Array.isArray(p.cards) && p.cards.length) return migrate(p);
+    }catch(e){}
+    return { month: curMonth(), cards: [newCard('신한카드', 0), newCard('삼성카드', 1)] };
+  }
+  function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){} }
+
+  var state = loadState();
+  // A state saved before month tracking existed has no month: treat it as this month.
+  var monthChanged = !!(state.month && state.month !== curMonth());
+  if(!state.month){ state.month = curMonth(); save(); }
+  if(monthChanged && !state.cards.some(function(c){ return (c.usage || 0) > 0; })){ state.month = curMonth(); monthChanged = false; save(); }
+
+  function getCard(id){ return state.cards.find(function(c){ return c.id === id; }); }
+
+  function compute(card){
+    var today = new Date(), dom = today.getDate();
+    var lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    var futureFixed = 0;
+    card.fixed.forEach(function(f){
+      // A 29~31 payment day in a shorter month is paid on that month's last day.
+      if(f.date == null || Math.min(f.date, lastDay) > dom) futureFixed += (f.amount || 0);
+    });
+    var tiers = [];
+    [1,2,3].forEach(function(n){ var v = card['tier' + n]; if(v) tiers.push({ n:n, label:n + '차', value:v }); });
+    tiers.sort(function(a,b){ return a.value - b.value; });
+    var scale = tiers.length ? tiers[tiers.length-1].value : 0;
+    var picked = card.targetTier ? card['tier' + card.targetTier] : null;
+    var goal = picked || scale;
+    var goalTier = tiers.find(function(t){ return t.value === goal; }) || null;
+    var projected = (card.usage || 0) + futureFixed;
+    var left = Math.max(goal - projected, 0);
+    var excess = Math.max(projected - goal, 0);
+    var next = tiers.find(function(t){ return t.value > goal && t.value > projected; }) || null;
+    return { futureFixed:futureFixed, tiers:tiers, scale:scale, goal:goal, goalTier:goalTier, projected:projected, left:left, excess:excess, next:next };
+  }
+  function statusOf(r){
+    if(r.goal <= 0) return 'unset';
+    if(r.left > 0) return 'left';
+    return r.excess > 0 ? 'over' : 'done';
+  }
+
+  // ---------------- Home ----------------
+  function heroHtml(){
+    var totalLeft = 0, totalUsage = 0, reached = 0, counted = 0;
+    state.cards.forEach(function(c){
+      var r = compute(c);
+      totalUsage += c.usage || 0;
+      if(r.goal > 0){ counted++; totalLeft += r.left; if(r.left === 0) reached++; }
+    });
+    var d = new Date(), lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    return '<div class="eyebrow">이번 달 더 쓸 수 있는 금액</div>' +
+      '<div class="total num">' + fmt(totalLeft) + '<small>원</small></div>' +
+      '<div class="stats">' +
+        '<span>사용금액 합계<b class="num">' + fmt(totalUsage) + '원</b></span>' +
+        '<span>목표 도달<b class="num">' + reached + ' / ' + counted + '장</b></span>' +
+        '<span>말일까지<b class="num">' + (lastDay - d.getDate()) + '일</b></span>' +
+      '</div>';
+  }
+
+  function tileBody(card){
+    var r = compute(card), st = statusOf(r);
+    var pillText = { left:'남음', done:'목표 도달', over:'초과', unset:'미설정' }[st];
+    var amt, sub;
+    var goalName = r.goalTier ? r.goalTier.label + ' ' + fmt(r.goal) + '원' : '';
+    if(st === 'unset'){
+      amt = '<div class="amt unset">설정 탭에서 실적 금액을 입력하세요</div>'; sub = '';
+    } else if(st === 'left'){
+      amt = '<div class="amt num">' + fmt(r.left) + '원</div>';
+      sub = goalName + '까지 더 쓸 수 있어요';
+    } else if(st === 'over'){
+      amt = '<div class="amt over num">+' + fmt(r.excess) + '원</div>';
+      sub = goalName + '을 넘겼어요. 이번 달은 더 쓰지 않아도 돼요';
+    } else {
+      amt = '<div class="amt done num">0원</div>';
+      sub = goalName + '에 딱 맞췄어요';
+    }
+    if(st !== 'unset' && r.next) sub += ' · ' + r.next.label + ' ' + short(r.next.value) + '까지는 ' + fmt(r.next.value - r.projected) + '원';
+
+    var meter = '';
+    if(r.scale > 0){
+      var pct = function(v){ return Math.min(v / r.scale * 100, 100); };
+      var useP = pct(card.usage || 0), projP = pct(r.projected), goalP = pct(r.goal);
+      meter = '<div class="meter"><div class="track">' +
+        '<div class="seg fix" style="width:' + projP + '%"></div>' +
+        '<div class="seg use" style="width:' + useP + '%"></div>' +
+        (r.excess > 0 && projP > goalP ? '<div class="seg ex" style="left:' + goalP + '%;width:' + (projP - goalP) + '%"></div>' : '') +
+        '</div>';
+      r.tiers.forEach(function(t){
+        var p = pct(t.value), isGoal = t.value === r.goal;
+        if(p < 100) meter += '<div class="tick" style="left:' + p + '%"></div>';
+        meter += '<span class="tlabel' + (p >= 99.5 ? ' end' : '') + (isGoal ? ' goal' : '') + '" style="left:' + p + '%">' + t.label + ' ' + short(t.value) + '</span>';
+      });
+      meter += '</div>';
+    }
+    return {
+      pill:'<span class="pill ' + st + '">' + pillText + '</span>',
+      main:'<div class="remain">' + amt + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>' + meter,
+      fix: r.futureFixed > 0 ? '남은 고정지출 ' + fmt(r.futureFixed) + '원 포함' : ''
+    };
+  }
+
+  // Home order: the user's own order from Settings, except cards that already reached
+  // (or passed) their goal sink to the bottom. state.cards itself is never reordered,
+  // so once usage drops again (e.g. a reset) every card returns to its own place.
+  function homeOrder(){
+    var open = [], reached = [];
+    state.cards.forEach(function(c){
+      var st = statusOf(compute(c));
+      (st === 'over' || st === 'done' ? reached : open).push(c);
+    });
+    return open.concat(reached);
+  }
+  function orderKey(){ return homeOrder().map(function(c){ return c.id; }).join(','); }
+
+  function renderHome(){
+    var html = '';
+    if(monthChanged){
+      html += '<div class="banner" id="monthBanner">' +
+        '<div>' + (new Date().getMonth()+1) + '월이 시작됐어요. 지난달 사용금액이 남아 있어요. 사용금액만 0원으로 바꿀까요? 실적 설정과 고정지출은 그대로 남아요.</div>' +
+        '<div class="row"><button class="btn primary" type="button" data-act="month-reset">0원으로 초기화</button>' +
+        '<button class="btn" type="button" data-act="month-keep">그대로 두기</button></div></div>';
+    }
+    html += '<section class="hero" id="hero">' + heroHtml() + '</section>';
+    html += '<section class="tiles">';
+    homeOrder().forEach(function(card){
+      var b = tileBody(card);
+      html += '<article class="tile" data-id="' + card.id + '" style="--c:' + card.color + '">' +
+        '<div class="tile-head"><span class="chipcard"></span><span class="tile-name">' + esc(card.name || '카드') + '</span><span data-slot="pill">' + b.pill + '</span></div>' +
+        '<div data-slot="main">' + b.main + '</div>' +
+        '<div class="usage-row">' +
+          '<div class="money"><label for="u-' + card.id + '">사용금액</label>' +
+          '<input id="u-' + card.id + '" data-usage="' + card.id + '" type="text" inputmode="numeric" autocomplete="off" value="' + fmt(card.usage) + '">' +
+          '<span class="won">원</span></div>' +
+          '<span class="fixnote" data-slot="fix">' + b.fix + '</span>' +
+        '</div>' +
+      '</article>';
+    });
+    html += '</section>';
+    html += '<div class="home-foot"><button class="textbtn" type="button" data-act="reset-all">사용금액 모두 0원으로</button></div>';
+    view.innerHTML = html;
+  }
+
+  function refreshTile(card){
+    var tile = view.querySelector('.tile[data-id="' + card.id + '"]');
+    if(!tile) return;
+    var b = tileBody(card);
+    tile.querySelector('[data-slot="pill"]').innerHTML = b.pill;
+    tile.querySelector('[data-slot="main"]').innerHTML = b.main;
+    tile.querySelector('[data-slot="fix"]').textContent = b.fix;
+    document.getElementById('hero').innerHTML = heroHtml();
+  }
+
+  // ---------------- Settings ----------------
+  var openPanels = {};
+  var armed = null, armTimer = null;
+
+  function panelSummary(card){
+    var parts = [];
+    [1,2,3].forEach(function(n){ if(card['tier' + n]) parts.push(n + '차 ' + short(card['tier' + n])); });
+    var s = parts.length ? parts.join(' · ') : '실적 미설정';
+    if(card.fixed.length) s += ' · 고정지출 ' + card.fixed.length + '건';
+    return s;
+  }
+
+  function segHtml(card){
+    var opts = [{ v:null, t:'최고 구간' }, { v:1, t:'1차' }, { v:2, t:'2차' }, { v:3, t:'3차' }];
+    return opts.map(function(o){
+      var on = card.targetTier === o.v || (o.v !== null && card.targetTier === o.v);
+      var dis = o.v !== null && !card['tier' + o.v];
+      return '<button type="button" data-act="target" data-v="' + (o.v === null ? '' : o.v) + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + (dis ? ' disabled' : '') + '>' + o.t + '</button>';
+    }).join('');
+  }
+
+  function fxRow(card, f){
+    var k = card.id + '-' + f.id;
+    return '<div class="fx" data-fx="' + f.id + '">' +
+      '<input class="text" id="fn-' + k + '" data-f="name" type="text" value="' + esc(f.name) + '" placeholder="예: 통신비" aria-label="항목명">' +
+      '<input class="text d" id="fd-' + k + '" data-f="date" type="text" inputmode="numeric" maxlength="2" value="' + (f.date || '') + '" placeholder="일" aria-label="결제일">' +
+      '<input class="text a" id="fa-' + k + '" data-f="amount" type="text" inputmode="numeric" value="' + (f.amount ? fmt(f.amount) : '') + '" placeholder="0" aria-label="금액">' +
+      '<button class="rm" type="button" data-act="fx-remove" aria-label="삭제">×</button>' +
+    '</div>';
+  }
+
+  function panelHtml(card, idx){
+    var open = !!openPanels[card.id];
+    var body = '';
+    if(open){
+      body = '<div class="panel-body">' +
+        '<div class="group"><label class="lbl" for="n-' + card.id + '">카드 이름</label>' +
+          '<input class="text" id="n-' + card.id + '" data-field="name" type="text" value="' + esc(card.name) + '"></div>' +
+        '<div class="group"><span class="lbl">색상</span><div class="swatches">' +
+          COLORS.map(function(c){ return '<button type="button" class="swatch" style="--c:' + c + '" data-act="color" data-v="' + c + '" aria-label="색상 ' + c + '" aria-pressed="' + (card.color === c) + '"></button>'; }).join('') +
+        '</div></div>' +
+        '<div class="group"><span class="lbl">실적 구간</span><div class="tiers">' +
+          [1,2,3].map(function(n){
+            return '<label class="tier" for="t' + n + '-' + card.id + '"><span>' + n + '차</span>' +
+              '<input class="text" id="t' + n + '-' + card.id + '" data-field="tier' + n + '" type="text" inputmode="numeric" value="' + (card['tier' + n] ? fmt(card['tier' + n]) : '') + '" placeholder="없음"></label>';
+          }).join('') +
+        '</div></div>' +
+        '<div class="group"><span class="lbl">목표로 쓸 구간</span><div class="seg-ctrl" data-slot="seg">' + segHtml(card) + '</div>' +
+          '<span class="hint">홈 화면의 "더 쓸 수 있는 금액"은 이 구간까지 남은 금액이에요.</span></div>' +
+        '<div class="group"><span class="lbl">고정지출</span>' +
+          '<span class="hint">결제일이 오늘(' + new Date().getDate() + '일) 이후인 항목만 앞으로 나갈 돈으로 계산해요. 결제일을 비우면 항상 앞으로 나갈 돈으로 봐요.</span>' +
+          (card.fixed.length ? '<div class="fx-head"><span>항목</span><span>결제일</span><span>금액</span><span></span></div>' : '') +
+          '<div class="fx-list">' + card.fixed.map(function(f){ return fxRow(card, f); }).join('') + '</div>' +
+          '<div><button class="btn" type="button" data-act="fx-add">+ 고정지출 추가</button></div></div>' +
+        '<div class="group"><label class="lbl" for="m-' + card.id + '">사용 조건 메모</label>' +
+          '<textarea class="text" id="m-' + card.id + '" data-field="memo" placeholder="예: 전월 30만원 이상 시 통신비 1만원 할인">' + esc(card.memo) + '</textarea></div>' +
+        '<div class="panel-actions">' +
+          '<button class="btn" type="button" data-act="up"' + (idx === 0 ? ' disabled' : '') + '>위로</button>' +
+          '<button class="btn" type="button" data-act="down"' + (idx === state.cards.length - 1 ? ' disabled' : '') + '>아래로</button>' +
+          '<span class="spacer"></span>' +
+          '<button class="btn danger" type="button" data-act="delete"' + (state.cards.length <= 1 ? ' disabled' : '') + '>카드 삭제</button>' +
+        '</div>' +
+      '</div>';
+    }
+    return '<section class="panel' + (open ? ' open' : '') + '" data-id="' + card.id + '">' +
+      '<button class="panel-head" type="button" data-act="toggle" aria-expanded="' + open + '">' +
+        '<span class="chipcard" style="--c:' + card.color + '"></span>' +
+        '<span class="meta"><span class="nm" data-slot="nm">' + esc(card.name || '카드') + '</span><span class="ds" data-slot="ds">' + esc(panelSummary(card)) + '</span></span>' +
+        '<span class="chev">▼</span>' +
+      '</button>' + body + '</section>';
+  }
+
+  function renderSettings(){
+    var html = '<div class="section-title">카드</div>';
+    html += state.cards.map(panelHtml).join('');
+    html += '<button class="btn block" type="button" data-act="add-card">+ 카드 추가</button>';
+    html += '<div class="section-title">백업</div>' +
+      '<div class="backup">' +
+        '<span class="hint">데이터는 이 기기의 이 브라우저에만 저장돼요. 기기를 바꾸거나 브라우저 데이터를 지우기 전에 백업 코드를 복사해 메모장 등에 보관하세요.</span>' +
+        '<div class="row"><label class="btn primary" for="backupFile">백업 파일 불러오기</label>' +
+        '<input type="file" id="backupFile" accept="application/json,.json,.txt" hidden>' +
+        '<button class="btn" type="button" data-act="show-import">코드 붙여넣기</button>' +
+        '<button class="btn" type="button" data-act="copy">백업 코드 복사</button></div>' +
+        '<div id="backupArea" hidden></div>' +
+      '</div>';
+    view.innerHTML = '<div style="display:flex;flex-direction:column;gap:12px">' + html + '</div>';
+  }
+
+  function refreshPanelHead(card){
+    var p = view.querySelector('.panel[data-id="' + card.id + '"]');
+    if(!p) return;
+    p.querySelector('[data-slot="nm"]').textContent = card.name || '카드';
+    p.querySelector('[data-slot="ds"]').textContent = panelSummary(card);
+    var seg = p.querySelector('[data-slot="seg"]');
+    if(seg) seg.innerHTML = segHtml(card);
+  }
+
+  function arm(btn, label, key){
+    // Two-tap confirm: first tap arms the button, second tap within 3s runs it.
+    if(armed === key){ clearTimeout(armTimer); armed = null; return true; }
+    armed = key;
+    var old = btn.textContent;
+    btn.textContent = label; btn.classList.add('armed');
+    clearTimeout(armTimer);
+    armTimer = setTimeout(function(){ armed = null; btn.textContent = old; btn.classList.remove('armed'); }, 3000);
+    return false;
+  }
+
+  // ---------------- Toast ----------------
+  var toastEl = document.getElementById('toast'), toastTimer = null;
+  function toast(msg, actionLabel, onAction){
+    toastEl.innerHTML = '<span>' + esc(msg) + '</span>' + (actionLabel ? '<button type="button">' + esc(actionLabel) + '</button>' : '');
+    toastEl.hidden = false;
+    if(actionLabel) toastEl.querySelector('button').onclick = function(){ toastEl.hidden = true; onAction(); };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.hidden = true; }, 5000);
+  }
+
+  // ---------------- Tabs ----------------
+  var view = document.getElementById('view');
+  var tab = 'home';
+  try{ if(localStorage.getItem(TAB_KEY) === 'settings') tab = 'settings'; }catch(e){}
+  if(location.hash === '#settings') tab = 'settings';
+
+  function show(t){
+    tab = t;
+    try{ localStorage.setItem(TAB_KEY, t); }catch(e){}
+    document.getElementById('tabHome').setAttribute('aria-selected', t === 'home');
+    document.getElementById('tabSettings').setAttribute('aria-selected', t === 'settings');
+    document.getElementById('pageTitle').textContent = t === 'home' ? '카드 실적' : '설정';
+    armed = null;
+    if(t === 'home') renderHome(); else renderSettings();
+    window.scrollTo(0, 0);
+  }
+  document.querySelector('.tabbar').addEventListener('click', function(e){
+    var b = e.target.closest('[data-tab]');
+    if(b && b.getAttribute('data-tab') !== tab) show(b.getAttribute('data-tab'));
+  });
+
+  // ---------------- Events ----------------
+  view.addEventListener('input', function(e){
+    var t = e.target;
+    var uId = t.getAttribute('data-usage');
+    if(uId){
+      var c = getCard(uId); if(!c) return;
+      c.usage = parseNum(t.value); save(); refreshTile(c); return;
+    }
+    var panel = t.closest('.panel'); if(!panel) return;
+    var card = getCard(panel.getAttribute('data-id')); if(!card) return;
+    var field = t.getAttribute('data-field');
+    if(field === 'name') card.name = t.value;
+    else if(field === 'memo') card.memo = t.value;
+    else if(field && field.indexOf('tier') === 0){
+      card[field] = parseTier(t.value);
+      if(card.targetTier && !card['tier' + card.targetTier]) card.targetTier = null;
+    }
+    var fxEl = t.closest('.fx');
+    if(fxEl){
+      var f = card.fixed.find(function(x){ return x.id === fxEl.getAttribute('data-fx'); });
+      var k = t.getAttribute('data-f');
+      if(f && k === 'name') f.name = t.value;
+      if(f && k === 'date') f.date = parseDay(t.value);
+      if(f && k === 'amount') f.amount = parseNum(t.value);
+    }
+    save(); refreshPanelHead(card);
+  });
+
+  // Re-format numbers with commas once the user leaves a field.
+  view.addEventListener('focusout', function(e){
+    var t = e.target;
+    var uId = t.getAttribute('data-usage');
+    if(uId){
+      var c = getCard(uId); if(c) t.value = fmt(c.usage);
+      // Re-sort only after typing ends, so a tile never jumps away mid-input.
+      // Wait a tick so focus has moved; keep it on whichever field was tapped next.
+      setTimeout(function(){
+        if(tab !== 'home') return;
+        var shown = Array.prototype.map.call(view.querySelectorAll('.tile'), function(el){ return el.getAttribute('data-id'); }).join(',');
+        if(shown === orderKey()) return;
+        var focusId = document.activeElement && document.activeElement.id;
+        var y = window.scrollY;
+        renderHome();
+        window.scrollTo(0, y);
+        var f = focusId && document.getElementById(focusId);
+        if(f) f.focus({ preventScroll:true });
+      }, 0);
+      return;
+    }
+    var panel = t.closest('.panel'); if(!panel) return;
+    var card = getCard(panel.getAttribute('data-id')); if(!card) return;
+    var field = t.getAttribute('data-field');
+    if(field && field.indexOf('tier') === 0) t.value = card[field] ? fmt(card[field]) : '';
+    var fxEl = t.closest('.fx');
+    if(fxEl){
+      var f = card.fixed.find(function(x){ return x.id === fxEl.getAttribute('data-fx'); });
+      if(f && t.getAttribute('data-f') === 'amount') t.value = f.amount ? fmt(f.amount) : '';
+      if(f && t.getAttribute('data-f') === 'date') t.value = f.date || '';
+    }
+  });
+  view.addEventListener('keydown', function(e){ if(e.key === 'Enter' && e.target.tagName === 'INPUT') e.target.blur(); });
+
+  view.addEventListener('click', function(e){
+    var b = e.target.closest('[data-act]'); if(!b || b.disabled) return;
+    var act = b.getAttribute('data-act');
+    var panel = b.closest('.panel');
+    var card = panel ? getCard(panel.getAttribute('data-id')) : null;
+
+    if(act === 'month-reset' || act === 'month-keep'){
+      if(act === 'month-reset') state.cards.forEach(function(c){ c.usage = 0; });
+      state.month = curMonth(); monthChanged = false; save(); renderHome();
+      if(act === 'month-reset') toast('사용금액을 0원으로 바꿨어요');
+      return;
+    }
+    if(act === 'reset-all'){
+      if(!arm(b, '한 번 더 누르면 모두 0원이 돼요', 'reset-all')) return;
+      var snap = state.cards.map(function(c){ return { id:c.id, usage:c.usage }; });
+      state.cards.forEach(function(c){ c.usage = 0; }); save(); renderHome();
+      toast('사용금액을 0원으로 바꿨어요', '되돌리기', function(){
+        snap.forEach(function(s){ var c = getCard(s.id); if(c) c.usage = s.usage; });
+        save(); if(tab === 'home') renderHome();
+      });
+      return;
+    }
+    if(act === 'add-card'){
+      var nc = newCard('새 카드', state.cards.length);
+      state.cards.push(nc); openPanels[nc.id] = true; save(); renderSettings();
+      var inp = document.getElementById('n-' + nc.id); if(inp){ inp.focus(); inp.select(); }
+      return;
+    }
+    if(act === 'copy'){ copyBackup(); return; }
+    if(act === 'show-import'){ showImport(); return; }
+    if(act === 'do-import'){ previewImport(document.getElementById('backupIn').value); return; }
+    if(act === 'confirm-import'){ applyImport(); return; }
+    if(act === 'cancel-import'){ pendingImport = null; var ba = document.getElementById('backupArea'); ba.hidden = true; ba.innerHTML = ''; return; }
+    if(!card) return;
+
+    if(act === 'toggle'){ openPanels[card.id] = !openPanels[card.id]; renderSettings(); return; }
+    if(act === 'color'){ card.color = b.getAttribute('data-v'); save(); renderSettings(); return; }
+    if(act === 'target'){ var v = b.getAttribute('data-v'); card.targetTier = v ? parseInt(v, 10) : null; save(); refreshPanelHead(card); return; }
+    if(act === 'fx-add'){
+      var f = { id: uid(), name: '', date: null, amount: 0 };
+      card.fixed.push(f); save(); renderSettings();
+      var fi = document.getElementById('fn-' + card.id + '-' + f.id); if(fi) fi.focus();
+      return;
+    }
+    if(act === 'fx-remove'){
+      var id = b.closest('.fx').getAttribute('data-fx');
+      card.fixed = card.fixed.filter(function(x){ return x.id !== id; }); save(); renderSettings(); return;
+    }
+    if(act === 'up' || act === 'down'){
+      var i = state.cards.indexOf(card), j = act === 'up' ? i - 1 : i + 1;
+      if(j < 0 || j >= state.cards.length) return;
+      state.cards[i] = state.cards[j]; state.cards[j] = card; save(); renderSettings(); return;
+    }
+    if(act === 'delete'){
+      if(!arm(b, '한 번 더 누르면 삭제', 'del-' + card.id)) return;
+      state.cards = state.cards.filter(function(c){ return c !== card; }); save(); renderSettings();
+      toast((card.name || '카드') + '를 삭제했어요');
+    }
+  });
+
+  // ---------------- Backup ----------------
+  function copyBackup(){
+    var text = JSON.stringify(state);
+    var area = document.getElementById('backupArea');
+    function fallback(){
+      area.hidden = false;
+      area.innerHTML = '<textarea class="text" id="backupOut" readonly>' + esc(text) + '</textarea><span class="hint">자동 복사가 막혀 있어요. 위 코드를 길게 눌러 전체 선택 후 복사하세요.</span>';
+      var ta = document.getElementById('backupOut'); ta.focus(); ta.select();
+    }
+    try{
+      navigator.clipboard.writeText(text).then(function(){ toast('백업 코드를 복사했어요'); }, fallback);
+    }catch(e){ fallback(); }
+  }
+  function showImport(){
+    var area = document.getElementById('backupArea');
+    area.hidden = false;
+    area.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<textarea class="text" id="backupIn" placeholder="복사해 둔 백업 코드를 붙여넣으세요"></textarea>' +
+      '<div><button class="btn primary" type="button" data-act="do-import">확인</button></div></div>';
+  }
+
+  // Accepts both this app's backups and the older dashboard's exported .json file:
+  // { cards:[{ name, tier1..3, targetTier, usage, memo, fixed:[{ name, date, amount }] }] }
+  var pendingImport = null;
+  function cleanImport(parsed){
+    if(!parsed || !Array.isArray(parsed.cards)) return null;
+    var cards = parsed.cards.filter(function(c){ return c && typeof c === 'object'; }).map(function(c){
+      var tier = function(v){ var n = Number(v); return n > 0 ? Math.round(n) : null; };
+      var t = parseInt(c.targetTier, 10);
+      return {
+        id: c.id ? String(c.id) : uid(), name: String(c.name || '카드'), color: c.color,
+        tier1: tier(c.tier1 !== undefined ? c.tier1 : c.target), tier2: tier(c.tier2), tier3: tier(c.tier3),
+        targetTier: t >= 1 && t <= 3 ? t : null,
+        usage: Math.max(Math.round(Number(c.usage) || 0), 0), memo: String(c.memo || ''),
+        fixed: (Array.isArray(c.fixed) ? c.fixed : []).filter(function(f){ return f && typeof f === 'object'; }).map(function(f){
+          return { id: f.id ? String(f.id) : uid(), name: String(f.name || ''), date: f.date == null || f.date === '' ? null : parseDay(f.date), amount: Math.max(Math.round(Number(f.amount) || 0), 0) };
+        })
+      };
+    });
+    cards.forEach(function(c){ if(c.targetTier && !c['tier' + c.targetTier]) c.targetTier = null; });
+    return cards.length ? { cards: cards } : null;
+  }
+  function previewImport(text){
+    var area = document.getElementById('backupArea');
+    area.hidden = false;
+    var parsed = null;
+    try{ parsed = cleanImport(JSON.parse(text)); }catch(e){}
+    if(!parsed){
+      pendingImport = null;
+      area.innerHTML = '<span class="hint" style="color:var(--over)">카드 데이터를 찾지 못했어요. 카드 실적 대시보드에서 내보낸 .json 파일이나 복사한 백업 코드인지 확인해 주세요.</span>';
+      return;
+    }
+    pendingImport = parsed;
+    var rows = parsed.cards.map(function(c){
+      var tiers = [1,2,3].filter(function(n){ return c['tier' + n]; }).map(function(n){ return n + '차 ' + short(c['tier' + n]); }).join(' · ') || '실적 미설정';
+      return '<li><b>' + esc(c.name) + '</b><br><span class="hint">' + tiers + ' · 사용 ' + fmt(c.usage) + '원 · 고정지출 ' + c.fixed.length + '건</span></li>';
+    }).join('');
+    area.innerHTML = '<div style="display:flex;flex-direction:column;gap:10px">' +
+      '<div><b>카드 ' + parsed.cards.length + '장</b>을 찾았어요.</div>' +
+      '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px">' + rows + '</ul>' +
+      '<span class="hint">불러오면 지금 있는 카드 ' + state.cards.length + '장이 위 내용으로 바뀌어요.</span>' +
+      '<div class="row"><button class="btn primary" type="button" data-act="confirm-import">불러오기</button>' +
+      '<button class="btn" type="button" data-act="cancel-import">취소</button></div></div>';
+  }
+  function applyImport(){
+    if(!pendingImport) return;
+    state = migrate(pendingImport); state.month = curMonth(); monthChanged = false; openPanels = {};
+    pendingImport = null;
+    save(); show('home'); toast('카드 ' + state.cards.length + '장을 불러왔어요');
+  }
+  view.addEventListener('change', function(e){
+    if(e.target.id !== 'backupFile') return;
+    var file = e.target.files && e.target.files[0]; if(!file) return;
+    var rd = new FileReader();
+    rd.onload = function(ev){ previewImport(ev.target.result); };
+    rd.onerror = function(){ previewImport(''); };
+    rd.readAsText(file);
+    e.target.value = '';
+  });
+
+  var d = new Date();
+  document.getElementById('today').textContent = d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getDate()).padStart(2,'0');
+  show(tab);
+})();
+</script>
+
+</body>
+</html>
